@@ -1,7 +1,7 @@
 const express = require("express");
 const bodyParser = require("body-parser");
 
-const {User} = require("../models/user");
+const {User} = require("../db/models/user");
 const {authenticate} = require('../middlewares/auth');
 const {verifySession} = require('../middlewares/verify_session');
 

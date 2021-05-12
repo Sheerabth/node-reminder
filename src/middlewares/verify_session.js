@@ -1,4 +1,4 @@
-const {User} = require('../models/user')
+const {User} = require('../db/models/user')
 
 const verifySession = (req, res, next) => {
     // grab the refresh token from the request header
