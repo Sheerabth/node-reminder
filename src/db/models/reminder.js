@@ -1,4 +1,5 @@
 const mongoose = require('mongoose')
+const validator = require('validator')
 
 const reminderSchema = new mongoose.Schema({
     userId: {

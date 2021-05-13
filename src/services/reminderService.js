@@ -1,21 +1,52 @@
 const nodemailer = require('nodemailer')
 const schedule = require('node-schedule')
+require('../db/mongoose')
+const {User} = require("../db/models/user");
+const {Reminder} = require("../db/models/reminder")
 
 class ReminderService {
     constructor() {
         this.jobList = {}
     }
 
-    handleJob = (reminderDetails) => {
-        console.log(reminderDetails.name)
+    handleJob = async (reminderDetails) => {
+        const transporter = await nodemailer.createTransport({
+            service: "Gmail",
+            secure: false,
+            auth: {
+                user: process.env.ACCOUNT_ADDR,
+                pass: process.env.ACCOUNT_PWD
+            }
+        })
+        const user = await User.findOne({_id: reminderDetails.userId})
+        const date = new Date()
+        const reminder = await Reminder.findOne({
+            _id: reminderDetails._id,
+            userId: user._id
+        })
+        await transporter.sendMail({
+            from: `"Node Reminder"<${process.env.ACCOUNT_ADDR}>`,
+            to: `"${user.name}"<${user.email}>`,
+            subject: `Reminding you to ${reminder.name}`,
+            html:  `<b>Hello ${user.name},</b>
+                    <p>You have schduled a reminder at ${date.toLocaleDateString()} ${date.toLocaleTimeString()}.</p>
+                    <b>Your Reminder:</b>
+                    <p>${reminder.description}.</p>`
+        })
+        if(reminder.recurringType === "once") {
+            reminder.status = true
+        }
+        reminder.save()
     }
 
-    scheduleJob = (reminder) => {
+    scheduleJob = async (reminder) => {
         // reschedule job
         try {
             this.jobList[reminder._id].cancel()
+        } catch {
         } finally {
-            let timeStamp = reminder.scheduleDateTime
+            let scheduleDateTime = reminder.scheduleDateTime
+            let timeStamp = new Date(String(scheduleDateTime))
             const secs = String(timeStamp.getSeconds())
             const mins = String(timeStamp.getMinutes())
             const hours = String(timeStamp.getHours())
@@ -28,8 +59,9 @@ class ReminderService {
             } else if (reminder.recurringType === "monthly") {
                 timeStamp = [secs, mins, hours, date, '*', '*'].join(' ')
             }
-            this.jobList[reminder._id] = schedule.scheduleJob(timeStamp, function (reminderDetails) {
-                this.handleJob(reminderDetails)
+            this.jobList[reminder._id] = await schedule.scheduleJob(timeStamp, async function (reminderDetails) {
+                await this.handleJob(reminderDetails)
+                console.log("Done Sending Mail")
             }.bind(this, reminder))
         }
     }
@@ -43,28 +75,27 @@ class ReminderService {
         }
     }
 
-    // testJob = (reminder) => {
-    //     reminder = reminder[0]
-    //     const date = new Date(2021, 4, 12, 21, 17, 0);
-    //     this.jobList[reminder._id].cancel()
-    //     this.jobList[reminder._id] = schedule.scheduleJob(date, function (reminderDetails) {
-    //         this.handleJob(reminderDetails)
-    //     }.bind(this, reminder))
-    //         .then(()=> {console.log("hi")})
-    // }
+    testJob = async (reminder) => {
+        reminder = reminder[0]
+        const date = new Date(2021, 4, 13, 11, 5, 0);
+        this.jobList[reminder._id] = await schedule.scheduleJob(date, async function (reminderDetails) {
+            await this.handleJob(reminderDetails)
+            console.log("bye")
+        }.bind(this, reminder))
+    }
 }
 
 reminderService = new ReminderService()
 
-process.on("message", ( (data) => {
+process.on("message", ( async (data) => {
     if (data.event === "start") {
         process.send("Process Started")
     } else if (data.event === "schedule") {
-        reminderService.scheduleJob(data.reminder)
+       await reminderService.scheduleJob(data.reminder)
     } else if (data.event === "delete") {
         reminderService.deleteJob(data.reminder)
     }
-    // else if (data.event === 'test') {
-    //     reminderService.testJob(data.reminder)
-    // }
+    else if (data.event === 'test') {
+        await reminderService.testJob(data.reminder)
+    }
 }))
